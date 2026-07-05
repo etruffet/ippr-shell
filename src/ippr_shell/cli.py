@@ -23,6 +23,10 @@ def main(argv=None):
     e.add_argument("--qea", required=True, help="target .qea (work on a copy!)")
     e.add_argument("--png", default="", help="optional diagram PNG export")
 
+    x = sub.add_parser("aas2xmi", help="Export AASX as Eclipse UML2 .uml (Papyrus, Visual Paradigm, any XMI tool)")
+    x.add_argument("--aasx", required=True)
+    x.add_argument("--uml", required=True, help="output .uml path")
+
     args = p.parse_args(argv)
 
     if args.cmd == "udt2aas":
@@ -30,6 +34,10 @@ def main(argv=None):
         res = udt2aas.convert(args.types, args.instances, args.namespace, args.company)
         udt2aas.write_outputs(res, args.aasx, args.json or args.aasx + ".json")
         print("AAS: %d  (stats: %s)" % (len(res.aas_ids), res.stats))
+    elif args.cmd == "aas2xmi":
+        from . import aas2xmi
+        stats = aas2xmi.generate(args.aasx, args.uml)
+        print("UML/XMI: %s" % stats)
     elif args.cmd == "aas2ea":
         from . import aas2ea
         stats = aas2ea.generate(args.aasx, args.qea, args.png)
