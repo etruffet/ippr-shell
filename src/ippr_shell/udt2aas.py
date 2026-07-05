@@ -43,6 +43,18 @@ DATATYPE_MAP = {
 }
 
 
+SEMANTIC_NS = "https://ippr-shell.io/semantics/submodel"
+
+
+def ippr_semantic_id(kind: str) -> model.ExternalReference:
+    """Published semantic id for the (free/proprietary) IPPR submodel
+    templates — AAS V3 allows proprietary submodels; giving them a stable,
+    published semanticId is what makes them recognizable by other tools."""
+    return model.ExternalReference(
+        (model.Key(type_=model.KeyTypes.GLOBAL_REFERENCE,
+                   value="%s/%s/1/0" % (SEMANTIC_NS, kind.lower())),))
+
+
 def sanitize_id_short(name: str, used: Optional[set] = None) -> str:
     """AAS id_short: [A-Za-z][A-Za-z0-9_]*, <= 128 chars, unique in scope."""
     s = re.sub(r"[^A-Za-z0-9_]", "_", name.strip())
@@ -177,6 +189,7 @@ class Udt2AasConverter:
                                         value_type=model.datatypes.String,
                                         value=str(v)[:1000]))
         return model.Submodel(id_=sm_id, id_short="IPPROrigin",
+                              semantic_id=ippr_semantic_id("ippr-origin"),
                               submodel_element=props)
 
     # -- main entries ---------------------------------------------------------
@@ -194,6 +207,8 @@ class Udt2AasConverter:
                 sm = model.Submodel(
                     id_="%s/sm/%s" % (aas_id, sanitize_id_short(child["name"], used_sm)),
                     id_short=sanitize_id_short(child["name"], set()),
+                    semantic_id=ippr_semantic_id(
+                        "ippr-viewpoint-" + sanitize_id_short(child["name"])),
                     submodel_element=[
                         e for e in (self._element(c, used, 1)
                                     for c in child.get("tags", [])) if e is not None],
@@ -229,6 +244,7 @@ class Udt2AasConverter:
         submodels = []
         if elements:
             sm = model.Submodel(id_=aas_id + "/sm/Content", id_short="Content",
+                                semantic_id=ippr_semantic_id("ippr-instance-content"),
                                 submodel_element=elements)
             self.result.store.add(sm)
             submodels.append(model.ModelReference.from_referable(sm))
@@ -265,6 +281,8 @@ class Udt2AasConverter:
             sm = model.Submodel(
                 id_="%s/sm/%s" % (aas_id, sanitize_id_short(child["name"])),
                 id_short=sanitize_id_short(child["name"]),
+                semantic_id=ippr_semantic_id(
+                    "ippr-viewpoint-" + sanitize_id_short(child["name"])),
                 submodel_element=[
                     e for e in (self._element(c, used, 1)
                                 for c in child.get("tags", [])) if e is not None],
