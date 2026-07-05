@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ippr-shell"
+version = "0.1.0"
+description = "Open-source toolchain for the Fractal IPPR method: Ignition UDT -> AAS (IEC 63278) -> SysML/Enterprise Architect"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Eric Truffet"}]
+requires-python = ">=3.10"
+dependencies = ["basyx-python-sdk>=1.0"]
+
+[project.optional-dependencies]
+ea = ["pywin32; platform_system == 'Windows'"]
+
+[project.scripts]
+ippr-shell = "ippr_shell.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

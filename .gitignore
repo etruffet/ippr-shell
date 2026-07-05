@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+# local artefacts — never commit company data
+*.aasx
+*.qea
+*.png
+output/
