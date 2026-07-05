@@ -18,5 +18,8 @@ ea = ["pywin32; platform_system == 'Windows'"]
 [project.scripts]
 ippr-shell = "ippr_shell.cli:main"
 
+[project.gui-scripts]
+ippr-shell-gui = "ippr_shell.gui:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
