@@ -10,8 +10,9 @@ Open-tools backend of IPPR Shell: same structural rule as aas2ea —
     instances = InstanceSpecifications classified by their type.
 
 Diagrams are not part of XMI; arrange elements in Papyrus (or let the
-tool auto-arrange). Stereotype application (SysML «block») is left to the
-target tool profile; the source path of every element is kept in comments.
+tool auto-arrange). The Papyrus SysML 1.6 Blocks profile is applied and every
+system class carries the SysML «Block» stereotype; the source path of every
+element is kept in comments.
 """
 from __future__ import annotations
 
@@ -23,10 +24,18 @@ from basyx.aas.adapter.aasx import AASXReader, DictSupplementaryFileContainer
 
 XMI_NS = "http://www.omg.org/spec/XMI/20131001"
 UML_NS = "http://www.eclipse.org/uml2/5.0.0/UML"
+ECORE_NS = "http://www.eclipse.org/emf/2002/Ecore"
+BLOCKS_NS = "http://www.eclipse.org/papyrus/sysml/1.6/SysML/Blocks"
 PRIMS = "pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#"
+# Papyrus SysML 1.6 profile (ids extracted from the official profile file)
+SYSML16 = "pathmap://SysML16_PROFILES/SysML.profile.uml"
+BLOCKS_PROFILE_ID = "SysML.package_packagedElement_Blocks"
+BLOCKS_EPKG_ID = "_dZfREJvkEeSpx5CUmLYZ-g"
 
 ET.register_namespace("xmi", XMI_NS)
 ET.register_namespace("uml", UML_NS)
+ET.register_namespace("ecore", ECORE_NS)
+ET.register_namespace("Blocks", BLOCKS_NS)
 
 
 def _vt_name(value_type) -> str:
@@ -79,10 +88,29 @@ def _origin_info(store, aas) -> dict:
 
 class UmlBuilder:
     def __init__(self, name: str):
-        self.root = ET.Element("{%s}Model" % UML_NS,
-                               {"{%s}version" % XMI_NS: "20131001",
-                                "{%s}id" % XMI_NS: _xid("model", name),
-                                "name": name})
+        self.xmi = ET.Element("{%s}XMI" % XMI_NS,
+                              {"{%s}version" % XMI_NS: "20131001"})
+        self.root = ET.SubElement(self.xmi, "{%s}Model" % UML_NS,
+                                  {"{%s}id" % XMI_NS: _xid("model", name),
+                                   "name": name})
+        # apply the Papyrus SysML 1.6 Blocks profile so «Block» resolves
+        pa = ET.SubElement(self.root, "profileApplication",
+                           {"{%s}id" % XMI_NS: _xid("pa", name)})
+        ann = ET.SubElement(pa, "eAnnotations",
+                            {"{%s}id" % XMI_NS: _xid("ann", name),
+                             "source": "http://www.eclipse.org/uml2/2.0.0/UML"})
+        ET.SubElement(ann, "references",
+                      {"{%s}type" % XMI_NS: "ecore:EPackage",
+                       "href": "%s#%s" % (SYSML16, BLOCKS_EPKG_ID)})
+        ET.SubElement(pa, "appliedProfile",
+                      {"href": "%s#%s" % (SYSML16, BLOCKS_PROFILE_ID)})
+
+    def apply_block(self, cls_el):
+        """SysML «Block» stereotype application (Papyrus SysML 1.6)."""
+        cid = cls_el.get("{%s}id" % XMI_NS)
+        ET.SubElement(self.xmi, "{%s}Block" % BLOCKS_NS,
+                      {"{%s}id" % XMI_NS: _xid("stblock", cid),
+                       "base_Class": cid})
 
     def package(self, parent, name, key):
         el = ET.SubElement(parent, "packagedElement",
@@ -128,9 +156,9 @@ class UmlBuilder:
         b.text = body
 
     def write(self, path):
-        ET.indent(self.root)
-        ET.ElementTree(self.root).write(path, encoding="UTF-8",
-                                        xml_declaration=True)
+        ET.indent(self.xmi)
+        ET.ElementTree(self.xmi).write(path, encoding="UTF-8",
+                                       xml_declaration=True)
 
 
 def _walk_content(builder, parent_el, elements, base_key, cls_el, sm_name,
@@ -169,6 +197,7 @@ def generate(aasx_path: str, uml_path: str) -> dict:
     if enterprise is not None:
         ent_cls = b.clazz(p_instance, _dname(enterprise), enterprise.id,
                           "Enterprise system (IPPR grid). AAS id: " + enterprise.id)
+        b.apply_block(ent_cls)
         stats["classes"] += 1
         for ref in sorted(enterprise.submodel, key=str):
             sm = _resolve(store, ref)
@@ -191,6 +220,7 @@ def generate(aasx_path: str, uml_path: str) -> dict:
                       "System block (Fractal IPPR). AAS id: %s | Source: %s"
                       % (aas.id, origin.get("sourcePath", "?")))
         class_ids[aas.id] = cls.get("{%s}id" % XMI_NS)
+        b.apply_block(cls)
         stats["classes"] += 1
         for ref in sorted(aas.submodel, key=str):
             sm = _resolve(store, ref)
