@@ -190,6 +190,10 @@ def generate(aasx_path: str, qea_path: str, png_path: str = "") -> dict:
         stamp = datetime.date.today().isoformat()
         root = ea.root_package("GENERATED FROM UDT (IPPR Shell, %s)" % stamp)
 
+        # Standardized roots mirroring Ignition's two trees (method rule):
+        # TYPE = UDT treeview (types only), INSTANCE = Tags tree (instances only)
+        p_instance = ea.sub_package(root, "INSTANCE")
+
         # ------ enterprise system: one block + IPPR viewpoint packages ------
         ent_pkg_map = {}
         if enterprise is not None:
@@ -198,7 +202,7 @@ def generate(aasx_path: str, qea_path: str, png_path: str = "") -> dict:
             ent_sms = [s for s in ent_sms if s is not None and s.id_short != "IPPROrigin"]
             ent_attrs = []
             for sm in ent_sms:
-                vp_pkg = ea.sub_package(root, _dname(sm))
+                vp_pkg = ea.sub_package(p_instance, _dname(sm))
                 stats["packages"] += 1
                 ent_pkg_map[_dname(sm)] = vp_pkg
                 pkg_map = {"": vp_pkg}
@@ -214,13 +218,13 @@ def generate(aasx_path: str, qea_path: str, png_path: str = "") -> dict:
                     elif kind == "prop":
                         note = "%s/%s" % (_dname(sm), path) if path else _dname(sm)
                         ent_attrs.append((_dname(el), _vt_name(el.value_type), note))
-            ea.add_block(root, _dname(enterprise),
+            ea.add_block(p_instance, _dname(enterprise),
                          "Enterprise system (IPPR grid).\nAAS id: %s" % enterprise.id,
                          ent_attrs)
             stats["blocks"] += 1
 
         # ------ types: package per system { block + viewpoint packages } ----
-        p_types = ea.sub_package(root, "_TYPES (UDT definitions)")
+        p_types = ea.sub_package(root, "TYPE")
         type_elements = {}
         for aas in sorted(types, key=lambda a: _dname(a)):
             origin = _origin_info(store, aas)
@@ -243,7 +247,7 @@ def generate(aasx_path: str, qea_path: str, png_path: str = "") -> dict:
             parent_path = src.rsplit("/", 1)[0] if "/" in src else ""
             pkg = ent_pkg_map.get(parent_path)
             if pkg is None:  # create missing chain (shallow packages only)
-                pkg = root
+                pkg = p_instance
                 walked = []
                 for seg in parent_path.split("/"):
                     walked.append(seg)

@@ -160,24 +160,28 @@ def generate(aasx_path: str, uml_path: str) -> dict:
     b = UmlBuilder("GENERATED FROM UDT (IPPR Shell)")
     stats = {"classes": 0, "instances": 0, "packages": 0}
 
+    # Standardized roots mirroring Ignition's two trees (method rule):
+    # TYPE = UDT treeview (types only), INSTANCE = Tags tree (instances only)
+    p_instance = b.package(b.root, "INSTANCE", "_instance_root")
+
     # enterprise viewpoint packages + enterprise class
     ent_pkgs = {}
     if enterprise is not None:
-        ent_cls = b.clazz(b.root, _dname(enterprise), enterprise.id,
+        ent_cls = b.clazz(p_instance, _dname(enterprise), enterprise.id,
                           "Enterprise system (IPPR grid). AAS id: " + enterprise.id)
         stats["classes"] += 1
         for ref in sorted(enterprise.submodel, key=str):
             sm = _resolve(store, ref)
             if sm is None or sm.id_short == "IPPROrigin":
                 continue
-            vp = b.package(b.root, _dname(sm), enterprise.id + "/" + _dname(sm))
+            vp = b.package(p_instance, _dname(sm), enterprise.id + "/" + _dname(sm))
             ent_pkgs[_dname(sm)] = vp
             stats["packages"] += 1
             _walk_content(b, vp, sm.submodel_element, enterprise.id, ent_cls,
                           _dname(sm))
 
     # types: package per system { class + viewpoint packages }
-    p_types = b.package(b.root, "_TYPES (UDT definitions)", "_types")
+    p_types = b.package(b.root, "TYPE", "_types")
     class_ids = {}
     for aas in sorted(types, key=lambda a: _dname(a)):
         origin = _origin_info(store, aas)
@@ -204,7 +208,7 @@ def generate(aasx_path: str, uml_path: str) -> dict:
         segs = parent_path.split("/") if parent_path else []
         pkg = ent_pkgs.get(segs[0]) if segs else None
         if pkg is None:
-            pkg = b.root
+            pkg = p_instance
             segs = segs or [""]
         node, key = pkg, segs[0] if segs else ""
         for seg in segs[1:]:
