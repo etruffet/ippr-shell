@@ -5,6 +5,7 @@ IPPR Shell — graphical launcher (tkinter, stdlib only).
 A lightweight GUI over the converter chain:
     1. Ignition UDT exports  ->  AASX (IEC 63278)
     2. AASX                  ->  Sparx EA model (.qea, SysML blocks)
+    3. AASX                  ->  UML2/XMI .uml (Papyrus, Visual Paradigm, ...)
 
 French-first UI (primary users: the method author and his students).
 """
@@ -32,7 +33,7 @@ class App(ttk.Frame):
 
         self.vars = {k: tk.StringVar() for k in
                      ("types", "instances", "namespace", "company",
-                      "aasx", "qea", "png")}
+                      "aasx", "qea", "png", "uml")}
         self.vars["namespace"].set("https://example.com/ippr")
         self.vars["company"].set("Enterprise")
         self._load_settings()
@@ -59,6 +60,13 @@ class App(ttk.Frame):
         btn2 = ttk.Button(self, text="Générer le modèle EA",
                           command=lambda: self._run(self.run_aas2ea))
         btn2.grid(row=r, column=1, sticky="w", pady=(2, 10)); r += 1
+
+        r = self._section(r, "3 · AASX  →  UML/XMI (Papyrus, Visual Paradigm…)")
+        r = self._file_row(r, "Sortie UML (.uml)", "uml",
+                           [("UML2/XMI", "*.uml")], save=True)
+        btn3 = ttk.Button(self, text="Générer le modèle UML (outils libres)",
+                          command=lambda: self._run(self.run_aas2xmi))
+        btn3.grid(row=r, column=1, sticky="w", pady=(2, 10)); r += 1
 
         chain = ttk.Button(self, text="▶  Chaîne complète  UDT → AASX → EA",
                            command=lambda: self._run(self.run_chain))
@@ -144,6 +152,17 @@ class App(ttk.Frame):
             self._say("   → " + v["qea"])
         finally:
             pythoncom.CoUninitialize()
+
+    def run_aas2xmi(self):
+        from . import aas2xmi
+        v = {k: s.get().strip() for k, s in self.vars.items()}
+        if not (v["aasx"] and v["uml"]):
+            self._say("⚠ Renseigner l'AASX source et la sortie .uml.")
+            return
+        self._say("Export UML/XMI (Papyrus)…")
+        stats = aas2xmi.generate(v["aasx"], v["uml"])
+        self._say("✔ UML : %s" % stats)
+        self._say("   → %s  (ouvrir dans Papyrus : File → Open)" % v["uml"])
 
     def run_chain(self):
         self.run_udt2aas()

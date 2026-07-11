@@ -13,9 +13,11 @@ digital, functional) — applied at every scale, and keep that model
 ```
 Ignition UDT/tag JSON export ──udt2aas──▶ AAS package (.aasx, IEC 63278)
                                               │
-                                          aas2ea (Windows + Sparx EA)
-                                              ▼
-                              SysML blocks & diagrams in a native .qea model
+                          ┌───────────────────┴───────────────────┐
+                      aas2ea (Windows + Sparx EA)         aas2xmi (any OS)
+                          ▼                                       ▼
+          SysML blocks & diagrams              UML2/XMI .uml for Eclipse
+          in a native .qea model               Papyrus, Visual Paradigm, …
 ```
 
 - **udt2aas** — converts Ignition UDT types/instances exports into a conformant
@@ -27,6 +29,11 @@ Ignition UDT/tag JSON export ──udt2aas──▶ AAS package (.aasx, IEC 6327
   AASX: one SysML `«block»` per type (with flattened typed attributes), one
   classified object per instance, auto-laid-out overview diagrams. Work on a
   copy of your model so your own profiles are preserved.
+- **aas2xmi** — open-tools backend: exports the AASX as an Eclipse UML2 `.uml`
+  (XMI) file with the Papyrus SysML 1.6 Blocks profile applied — every system
+  is a `«block»`, instances are classified InstanceSpecifications. Opens
+  natively in Eclipse Papyrus; imports into Visual Paradigm or any
+  XMI-capable tool. No Windows or EA licence required.
 
 ## Quick start
 
@@ -35,6 +42,7 @@ pip install -e .            # or: pip install -e .[ea]  on Windows for EA export
 ippr-shell udt2aas --types export_types.json --instances export_tags.json \
     --namespace https://your.org/ippr --company YourCo --aasx out.aasx
 ippr-shell aas2ea --aasx out.aasx --qea copy_of_model.qea --png overview.png
+ippr-shell aas2xmi --aasx out.aasx --uml model.uml   # open tools (Papyrus…)
 ```
 
 ## Design principles
