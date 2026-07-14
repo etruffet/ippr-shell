@@ -31,8 +31,11 @@ Ignition UDT/tag JSON export ──udt2aas──▶ AAS package (.aasx, IEC 6327
   copy of your model so your own profiles are preserved.
 - **aas2xmi** — open-tools backend: exports the AASX as an Eclipse UML2 `.uml`
   (XMI) file with the Papyrus SysML 1.6 Blocks profile applied — every system
-  is a `«block»`, instances are classified InstanceSpecifications. Opens
-  natively in Eclipse Papyrus; imports into Visual Paradigm or any
+  is a `«block»`, instances are classified InstanceSpecifications. Also writes
+  the Papyrus companion files (`.di` bound to the SysML 1.6 architecture and
+  `.notation` with a ready-made "IPPR Blocks" block-definition diagram), so
+  the export opens as a full Papyrus model (requires the Papyrus SysML 1.6
+  feature); the bare `.uml` still imports into Visual Paradigm or any
   XMI-capable tool. No Windows or EA licence required.
 
 ## Quick start

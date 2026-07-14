@@ -21,7 +21,9 @@ def _build_uml(tmp):
     udt2aas.write_outputs(res, aasx, os.path.join(tmp, "out.json"))
     uml = os.path.join(tmp, "out.uml")
     stats = aas2xmi.generate(aasx, uml)
-    return stats, ET.parse(uml).getroot()
+    with open(uml, encoding="utf-8") as f:
+        raw = f.read()
+    return stats, ET.parse(uml).getroot(), raw
 
 
 def _packages(el):
@@ -31,7 +33,11 @@ def _packages(el):
 
 def test_generate_structure_and_stereotypes():
     with tempfile.TemporaryDirectory() as tmp:
-        stats, root = _build_uml(tmp)
+        stats, root, raw = _build_uml(tmp)
+
+    # EMF resolves "ecore:" from the xmlns declaration; it only occurs in
+    # attribute values, so make sure the serializer really emitted it
+    assert 'xmlns:ecore="%s"' % aas2xmi.ECORE_NS in raw
 
     assert stats["classes"] == 2      # system type + enterprise
     assert stats["instances"] == 1
@@ -45,7 +51,12 @@ def test_generate_structure_and_stereotypes():
     assert pa is not None
     applied = pa.find("appliedProfile")
     assert applied is not None
-    assert applied.get("href", "").startswith(aas2xmi.SYSML16)
+    assert applied.get("href") == "%s#%s" % (aas2xmi.SYSML16,
+                                             aas2xmi.BLOCKS_PROFILE_ID)
+    # statically-defined profile: the EPackage reference is the nsURI root
+    refs = pa.find("eAnnotations/references")
+    assert refs is not None
+    assert refs.get("href") == aas2xmi.BLOCKS_NS + "#/"
 
     # method rule: TYPE / INSTANCE roots mirror Ignition's two trees
     roots = _packages(mdl)
@@ -78,11 +89,43 @@ def test_generate_structure_and_stereotypes():
     assert inst.get("classifier") == cls_id
 
 
+def test_papyrus_companion_files():
+    with tempfile.TemporaryDirectory() as tmp:
+        t = _write(tmp, "types.json", SYNTH_TYPES)
+        i = _write(tmp, "instances.json", SYNTH_INSTANCES)
+        res = udt2aas.convert(t, i, "https://example.com/test", "TestCo")
+        aasx = os.path.join(tmp, "out.aasx")
+        udt2aas.write_outputs(res, aasx, os.path.join(tmp, "out.json"))
+        stats = aas2xmi.generate(aasx, os.path.join(tmp, "out.uml"))
+        assert stats["diagrams"] == 1
+
+        # .di binds the model to the SysML 1.6 architecture context
+        di = ET.parse(os.path.join(tmp, "out.di")).getroot()
+        assert di.tag.endswith("ArchitectureDescription")
+        assert di.get("contextId") == aas2xmi.SYSML16_CONTEXT
+
+        # .notation holds one BDD with a shape per «Block» class
+        nt = ET.parse(os.path.join(tmp, "out.notation")).getroot()
+        dg = nt.find("{%s}Diagram" % aas2xmi.NOTATION_NS)
+        assert dg is not None
+        assert dg.get("type") == "PapyrusUMLClassDiagram"
+        kinds = [s.get("diagramKindId") for s in dg.findall("styles")]
+        assert aas2xmi.BDD_KIND in kinds
+
+        shapes = [c for c in dg.findall("children")
+                  if c.get("type") == "Class_Shape"]
+        assert len(shapes) == stats["classes"]
+        # every shape points into the sibling .uml file
+        for s in shapes:
+            href = s.find("element").get("href")
+            assert href.startswith("out.uml#")
+
+
 def test_ids_are_stable():
     with tempfile.TemporaryDirectory() as tmp:
-        _, root_a = _build_uml(tmp)
+        _, root_a, _ = _build_uml(tmp)
     with tempfile.TemporaryDirectory() as tmp:
-        _, root_b = _build_uml(tmp)
+        _, root_b, _ = _build_uml(tmp)
     ids_a = [e.get("{%s}id" % XMI) for e in root_a.iter()]
     ids_b = [e.get("{%s}id" % XMI) for e in root_b.iter()]
     assert ids_a == ids_b  # deterministic ids -> diffable, re-importable

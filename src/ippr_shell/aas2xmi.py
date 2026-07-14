@@ -17,6 +17,7 @@ element is kept in comments.
 from __future__ import annotations
 
 import hashlib
+import os
 import xml.etree.ElementTree as ET
 
 from basyx.aas import model
@@ -27,10 +28,22 @@ UML_NS = "http://www.eclipse.org/uml2/5.0.0/UML"
 ECORE_NS = "http://www.eclipse.org/emf/2002/Ecore"
 BLOCKS_NS = "http://www.eclipse.org/papyrus/sysml/1.6/SysML/Blocks"
 PRIMS = "pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#"
-# Papyrus SysML 1.6 profile (ids extracted from the official profile file)
+# Papyrus SysML 1.6 profile. The profile is statically defined: stereotype
+# EClasses live in registered EPackages (plugin.xml generated_package), so the
+# profileApplication must reference the Blocks nsURI root ("<nsURI>#/"), not an
+# id inside SysML.profile.uml.
 SYSML16 = "pathmap://SysML16_PROFILES/SysML.profile.uml"
 BLOCKS_PROFILE_ID = "SysML.package_packagedElement_Blocks"
-BLOCKS_EPKG_ID = "_dZfREJvkEeSpx5CUmLYZ-g"
+
+# Papyrus companion files (.di/.notation) use XMI 2.0, not 20131001, and the
+# style/uml prefixes only occur inside attribute values — so both files are
+# built with literal (non-Clark) tag/attribute names and explicit xmlns attrs.
+XMI2_NS = "http://www.omg.org/XMI"
+ARCH_NS = "http://www.eclipse.org/papyrus/infra/core/architecture"
+NOTATION_NS = "http://www.eclipse.org/gmf/runtime/1.0.2/notation"
+STYLE_NS = "http://www.eclipse.org/papyrus/infra/gmfdiag/style"
+SYSML16_CONTEXT = "org.eclipse.papyrus.sysml.architecture.SysML16"
+BDD_KIND = "org.eclipse.papyrus.sysml16.diagram.blockdefinition"
 
 ET.register_namespace("xmi", XMI_NS)
 ET.register_namespace("uml", UML_NS)
@@ -90,6 +103,10 @@ class UmlBuilder:
     def __init__(self, name: str):
         self.xmi = ET.Element("{%s}XMI" % XMI_NS,
                               {"{%s}version" % XMI_NS: "20131001"})
+        # "ecore" only occurs inside attribute values (xmi:type="ecore:EPackage"),
+        # so ElementTree would never emit its declaration — force it or EMF
+        # fails with ClassNotFoundException: 'EPackage'.
+        self.xmi.set("xmlns:ecore", ECORE_NS)
         self.root = ET.SubElement(self.xmi, "{%s}Model" % UML_NS,
                                   {"{%s}id" % XMI_NS: _xid("model", name),
                                    "name": name})
@@ -101,7 +118,7 @@ class UmlBuilder:
                              "source": "http://www.eclipse.org/uml2/2.0.0/UML"})
         ET.SubElement(ann, "references",
                       {"{%s}type" % XMI_NS: "ecore:EPackage",
-                       "href": "%s#%s" % (SYSML16, BLOCKS_EPKG_ID)})
+                       "href": BLOCKS_NS + "#/"})
         ET.SubElement(pa, "appliedProfile",
                       {"href": "%s#%s" % (SYSML16, BLOCKS_PROFILE_ID)})
 
@@ -161,6 +178,82 @@ class UmlBuilder:
                                        xml_declaration=True)
 
 
+def _write_di(path: str):
+    """Papyrus entry point: binds the model to the SysML 1.6 architecture."""
+    di = ET.Element("architecture:ArchitectureDescription",
+                    {"xmi:version": "2.0",
+                     "xmlns:xmi": XMI2_NS,
+                     "xmlns:architecture": ARCH_NS,
+                     "contextId": SYSML16_CONTEXT})
+    ET.ElementTree(di).write(path, encoding="UTF-8", xml_declaration=True)
+
+
+def _write_notation(path: str, uml_file: str, model_id: str, blocks):
+    """One SysML BDD ("IPPR Blocks") showing every «Block» class on a grid."""
+    xmi = ET.Element("xmi:XMI", {"xmi:version": "2.0",
+                                 "xmlns:xmi": XMI2_NS,
+                                 "xmlns:notation": NOTATION_NS,
+                                 "xmlns:style": STYLE_NS,
+                                 "xmlns:uml": UML_NS})
+    dg = ET.SubElement(xmi, "notation:Diagram",
+                       {"xmi:id": _xid("bdd", uml_file),
+                        "type": "PapyrusUMLClassDiagram",
+                        "name": "IPPR Blocks", "measurementUnit": "Pixel"})
+    for i, (cid, _name) in enumerate(blocks):
+        shape = ET.SubElement(dg, "children",
+                              {"xmi:type": "notation:Shape",
+                               "xmi:id": _xid("shape", cid),
+                               "type": "Class_Shape"})
+        ET.SubElement(shape, "children",
+                      {"xmi:type": "notation:DecorationNode",
+                       "xmi:id": _xid("shname", cid),
+                       "type": "Class_NameLabel"})
+        fl = ET.SubElement(shape, "children",
+                           {"xmi:type": "notation:DecorationNode",
+                            "xmi:id": _xid("shfloat", cid),
+                            "type": "Class_FloatingNameLabel"})
+        ET.SubElement(fl, "layoutConstraint",
+                      {"xmi:type": "notation:Location",
+                       "xmi:id": _xid("shfloatloc", cid), "y": "15"})
+        for comp in ("Class_AttributeCompartment", "Class_OperationCompartment",
+                     "Class_NestedClassifierCompartment"):
+            c = ET.SubElement(shape, "children",
+                              {"xmi:type": "notation:BasicCompartment",
+                               "xmi:id": _xid("cmp", cid, comp),
+                               "type": comp})
+            for st in ("TitleStyle", "SortingStyle", "FilteringStyle"):
+                ET.SubElement(c, "styles",
+                              {"xmi:type": "notation:" + st,
+                               "xmi:id": _xid("cmps", cid, comp, st)})
+            ET.SubElement(c, "layoutConstraint",
+                          {"xmi:type": "notation:Bounds",
+                           "xmi:id": _xid("cmpb", cid, comp)})
+        ET.SubElement(shape, "element", {"xmi:type": "uml:Class",
+                                         "href": "%s#%s" % (uml_file, cid)})
+        ET.SubElement(shape, "layoutConstraint",
+                      {"xmi:type": "notation:Bounds",
+                       "xmi:id": _xid("shb", cid),
+                       "x": str(40 + (i % 3) * 280),
+                       "y": str(40 + (i // 3) * 200),
+                       "width": "240", "height": "140"})
+    ET.SubElement(dg, "styles", {"xmi:type": "notation:StringValueStyle",
+                                 "xmi:id": _xid("dgv", uml_file),
+                                 "name": "diagram_compatibility_version",
+                                 "stringValue": "1.3.0"})
+    ET.SubElement(dg, "styles", {"xmi:type": "notation:DiagramStyle",
+                                 "xmi:id": _xid("dgs", uml_file)})
+    pds = ET.SubElement(dg, "styles",
+                        {"xmi:type": "style:PapyrusDiagramStyle",
+                         "xmi:id": _xid("dgp", uml_file),
+                         "diagramKindId": BDD_KIND})
+    ET.SubElement(pds, "owner", {"xmi:type": "uml:Model",
+                                 "href": "%s#%s" % (uml_file, model_id)})
+    ET.SubElement(dg, "element", {"xmi:type": "uml:Model",
+                                  "href": "%s#%s" % (uml_file, model_id)})
+    ET.indent(xmi)
+    ET.ElementTree(xmi).write(path, encoding="UTF-8", xml_declaration=True)
+
+
 def _walk_content(builder, parent_el, elements, base_key, cls_el, sm_name,
                   path="", depth=0):
     """SMC -> sub-package; Property -> attribute on the system class."""
@@ -186,7 +279,8 @@ def generate(aasx_path: str, uml_path: str) -> dict:
     enterprise = next((a for a in shells if (a.id_short or "").startswith("ES_")), None)
 
     b = UmlBuilder("GENERATED FROM UDT (IPPR Shell)")
-    stats = {"classes": 0, "instances": 0, "packages": 0}
+    stats = {"classes": 0, "instances": 0, "packages": 0, "diagrams": 0}
+    blocks = []  # (class xmi:id, name) — shown on the generated BDD
 
     # Standardized roots mirroring Ignition's two trees (method rule):
     # TYPE = UDT treeview (types only), INSTANCE = Tags tree (instances only)
@@ -198,6 +292,7 @@ def generate(aasx_path: str, uml_path: str) -> dict:
         ent_cls = b.clazz(p_instance, _dname(enterprise), enterprise.id,
                           "Enterprise system (IPPR grid). AAS id: " + enterprise.id)
         b.apply_block(ent_cls)
+        blocks.append((ent_cls.get("{%s}id" % XMI_NS), _dname(enterprise)))
         stats["classes"] += 1
         for ref in sorted(enterprise.submodel, key=str):
             sm = _resolve(store, ref)
@@ -221,6 +316,7 @@ def generate(aasx_path: str, uml_path: str) -> dict:
                       % (aas.id, origin.get("sourcePath", "?")))
         class_ids[aas.id] = cls.get("{%s}id" % XMI_NS)
         b.apply_block(cls)
+        blocks.append((class_ids[aas.id], _dname(aas)))
         stats["classes"] += 1
         for ref in sorted(aas.submodel, key=str):
             sm = _resolve(store, ref)
@@ -256,4 +352,12 @@ def generate(aasx_path: str, uml_path: str) -> dict:
         stats["instances"] += 1
 
     b.write(uml_path)
+
+    # Papyrus companions: .di (architecture context) + .notation (one BDD),
+    # so the export opens as a full Papyrus model, not a bare UML file
+    base = uml_path[:-4] if uml_path.lower().endswith(".uml") else uml_path
+    _write_di(base + ".di")
+    _write_notation(base + ".notation", os.path.basename(uml_path),
+                    b.root.get("{%s}id" % XMI_NS), blocks)
+    stats["diagrams"] = 1
     return stats

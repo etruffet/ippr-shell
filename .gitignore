@@ -9,3 +9,6 @@ dist/
 *.qea
 *.png
 output/
+demo/
+# local Papyrus install (validation tooling, not source)
+Papyrus/
